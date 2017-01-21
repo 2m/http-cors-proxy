@@ -32,9 +32,9 @@ object HttpCorsProxySuite extends TestSuite[NodeJsTestServer] {
     |    }
     |  ]
     |}""".through(HttpCorsProxy.corsProxy) { response =>
-      assertEquals(response, """{"cookies":[["XSRF-TOKEN","123%3D%3D"],["_social_session","987"]],"body":{"status":"ok"}}""")
+      assertEquals(response.headers("Access-Control-Allow-Origin"), "*")
+      assertEquals(response.body.get, """{"cookies":[["XSRF-TOKEN","123%3D%3D"],["_social_session","987"]],"body":{"status":"ok"}}""")
     }
-
   }
 
   test("should proxy a request with cookies") { server =>
@@ -53,10 +53,34 @@ object HttpCorsProxySuite extends TestSuite[NodeJsTestServer] {
     |    "cookie1=value"
     |  ]
     |}
-    """.stripMargin.through(HttpCorsProxy.corsProxy) { response =>
-      assertEquals(response, """{"cookies":[],"body":{"status":"ok"}}""")
+    """.through(HttpCorsProxy.corsProxy) { response =>
+      assertEquals(response.headers("Access-Control-Allow-Origin"), "*")
+      assertEquals(response.body.get, """{"cookies":[],"body":{"status":"ok"}}""")
+    }
+  }
+
+    test("should return 400 on badly formed response from server") { server =>
+
+      implicit val binding = server.on("GET", "/requestWithBadResponse") { request =>
+        val responseBody = """{ "status": "ok with missing double quote }"""
+        (Map.empty, responseBody)
+      }
+
+      """
+        |{
+        |  "url": "http://localhost:$port$/requestWithBadResponse"
+        |}
+      """.through(HttpCorsProxy.corsProxy) { response =>
+        assertEquals(response.status, 400)
+        assert(response.body.get.startsWith("ERROR: "))
+      }
     }
 
+  test("should return 400 on badly formed request") { server =>
+    "{}".throughNoServer(HttpCorsProxy.corsProxy) { response =>
+      assertEquals(response.status, 400)
+      assert(response.body.get.startsWith("ERROR: "))
+    }
   }
 
 }

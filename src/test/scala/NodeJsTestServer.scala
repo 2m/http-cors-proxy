@@ -14,7 +14,6 @@ class NodeJsTestServer {
 
   def on(method: String, path: String)(r: Request => (Map[String, Seq[String]], String)) = {
     server.onRequest((request: IncomingMessage, response: ServerResponse) => {
-      println("inside request handler")
       if (request.url == path) {
         var incomingData = Seq.empty[String]
         request.onData((data: js.Any) => {
@@ -35,7 +34,6 @@ class NodeJsTestServer {
     })
     val bindPromise = Promise[Binding]
     server.listen(0, "localhost", 511, (args: js.Any) => {
-      println(s"listening to ${server.address.port.get}")
       bindPromise.success(Binding(server.address.port.get))
     })
     bindPromise.future
@@ -46,39 +44,55 @@ class NodeJsTestServer {
 
 object NodeJsTestServer {
   case class Binding(port: Int)
+  case class Response(status: Int, body: Option[String], headers: Map[String, String])
   case class Request(body: String, cookie: Option[String])
 
   @ScalaJSDefined
   class PreparedRequest(request: String) extends GoogleCloudFunctions.Request {
-    override val body = request
+    override val body = js.JSON.parse(request).asInstanceOf[js.Object]
   }
 
   @ScalaJSDefined
   class ResponseListener() extends GoogleCloudFunctions.Response {
-    val response = Promise[String]
+    private var statusCode = Option.empty[Int]
+    private var headers = Map.empty[String, String]
+
+    val response = Promise[Response]
+
+    override def header(field: String, value: String): Unit =
+      headers += field -> value
+
+    override def status(status: Int): GoogleCloudFunctions.Response = {
+      statusCode = Some(status)
+      this
+    }
 
     override def send(resp: String): Unit =
-      response.success(resp)
+      response.success(Response(statusCode.getOrElse(200), Some(resp), headers))
 
     override def end(): Unit =
-      ???
-
-    override def status(status: Int): GoogleCloudFunctions.Response =
-      ???
+      response.success(Response(statusCode.get, None, headers))
   }
 
   implicit class RequestStringOps(s: String) {
-    def through(f: (GoogleCloudFunctions.Request, GoogleCloudFunctions.Response) => Unit)(responseAssertion: String => Unit)(implicit b: Future[Binding]): Future[Unit] = {
+    def through(f: (GoogleCloudFunctions.Request, GoogleCloudFunctions.Response) => Unit)(responseAssertion: Response => Unit)(implicit b: Future[Binding]): Future[Unit] = {
       import scala.concurrent.ExecutionContext.Implicits.global
 
       b.flatMap { binding =>
-        val gcfRequest = new PreparedRequest(s.replace("$port$", binding.port.toString).stripMargin)
-        val gcfResponse = new ResponseListener()
-        println("calling gcf handler")
-        f(gcfRequest, gcfResponse)
-        gcfResponse.response.future.map(responseAssertion)
+        handleRequest(f, s.replace("$port$", binding.port.toString).stripMargin, responseAssertion)
       }
+    }
 
+    def throughNoServer(f: (GoogleCloudFunctions.Request, GoogleCloudFunctions.Response) => Unit)(responseAssertion: Response => Unit): Future[Unit] =
+      handleRequest(f, s, responseAssertion)
+
+    private def handleRequest(f: (GoogleCloudFunctions.Request, GoogleCloudFunctions.Response) => Unit, request: String, responseAssertion: Response => Unit) = {
+      import scala.concurrent.ExecutionContext.Implicits.global
+
+      val gcfRequest = new PreparedRequest(request)
+      val gcfResponse = new ResponseListener()
+      f(gcfRequest, gcfResponse)
+      gcfResponse.response.future.map(responseAssertion)
     }
   }
 }
