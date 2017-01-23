@@ -40,18 +40,16 @@ object HttpCorsProxy {
       .withMethod(Method.POST)
       .withBody(URLEncodedBody(request.form.map(f => (f.name, f.value)): _*))
 
-    request.cookie
-      .fold(outBoundRequest)(outBoundRequest.withHeader("Cookie", _))
-      .send().map { response =>
-        // without the back and forth conversion we get the following error:
-        // An undefined behavior was detected: "..." is not an instance of java.lang.String
-        val cookieHeaderValue = response.headers.get("Set-Cookie").getOrElse("").asInstanceOf[js.Any].toString
-        val cookies = CookieParser.`set-cookie-header`.parse(cookieHeaderValue) match {
-          case Parsed.Success(parsed, _) => parsed
-          case Parsed.Failure(_, _, _) => Seq.empty
-        }
-        Response(cookies, read[Js.Obj](response.body))
+    request.cookie.fold(outBoundRequest)(outBoundRequest.withHeader("Cookie", _)).send().map { response =>
+      // without the back and forth conversion we get the following error:
+      // An undefined behavior was detected: "..." is not an instance of java.lang.String
+      val cookieHeaderValue = response.headers.get("Set-Cookie").getOrElse("").asInstanceOf[js.Any].toString
+      val cookies = CookieParser.`set-cookie-header`.parse(cookieHeaderValue) match {
+        case Parsed.Success(parsed, _) => parsed
+        case Parsed.Failure(_, _, _)   => Seq.empty
       }
+      Response(cookies, read[Js.Obj](response.body))
+    }
   }
 
 }
