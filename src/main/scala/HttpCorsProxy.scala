@@ -14,8 +14,12 @@ import scala.util.{Failure, Success}
 
 object HttpCorsProxy {
 
+  case class QueryParam(name: String, value: String)
   case class FormData(name: String, value: String)
-  case class Request(url: String, cookie: Option[String] = Option.empty, form: Seq[FormData] = Seq.empty)
+  case class Request(url: String,
+                     cookie: Option[String] = Option.empty,
+                     form: Seq[FormData] = Seq.empty,
+                     query: Seq[QueryParam] = Seq.empty)
   case class Response(cookies: Seq[(String, String)], body: Js.Obj)
 
   @JSExportTopLevel("corsProxy")
@@ -38,6 +42,7 @@ object HttpCorsProxy {
 
     val outBoundRequest = HttpRequest(request.url)
       .withMethod(Method.POST)
+      .withQueryParameters(request.query.map(q => (q.name, q.value)): _*)
       .withBody(URLEncodedBody(request.form.map(f => (f.name, f.value)): _*))
 
     request.cookie.fold(outBoundRequest)(outBoundRequest.withHeader("Cookie", _)).send().map { response =>
