@@ -9,7 +9,7 @@ object HttpCorsProxySuite extends TestSuite[NodeJsTestServer] {
   def tearDown(server: NodeJsTestServer) = server.close()
 
   test("should proxy a form request") { server =>
-    implicit val binding = server.on("GET", "/formRequest") { request =>
+    implicit val binding = server.on("POST", "/formRequest") { request =>
       assertEquals(request.body, "username=usr&password=pass")
 
       val responseHeaders =
@@ -39,7 +39,7 @@ object HttpCorsProxySuite extends TestSuite[NodeJsTestServer] {
   }
 
   test("should proxy a request with cookies") { server =>
-    implicit val binding = server.on("GET", "/requestWithCookies") { request =>
+    implicit val binding = server.on("POST", "/requestWithCookies") { request =>
       assertEquals(request.cookie, Some("cookie1=value"))
 
       val responseBody = """{ "status": "ok" }"""
@@ -60,7 +60,7 @@ object HttpCorsProxySuite extends TestSuite[NodeJsTestServer] {
   }
 
   test("should proxy a request with query parameters") { server =>
-    implicit val binding = server.on("GET", "/requestWithQueryParams") { request =>
+    implicit val binding = server.on("POST", "/requestWithQueryParams") { request =>
       assertEquals(request.query, "?param1=value1&param1=value12&param2=value2")
 
       val responseBody = """{ "status": "ok" }"""
@@ -91,8 +91,25 @@ object HttpCorsProxySuite extends TestSuite[NodeJsTestServer] {
     }
   }
 
+  test("should proxy a GET request") { server =>
+    implicit val binding = server.on("GET", "/getRequest") { request =>
+      val responseBody = """{ "status": "ok" }"""
+      (Map.empty, responseBody)
+    }
+
+    """
+      |{
+      |  "method": "GET",
+      |  "url": "http://localhost:$port$/getRequest"
+      |}
+    """.through(HttpCorsProxy.corsProxy) { response =>
+      assertEquals(response.headers("Access-Control-Allow-Origin"), "*")
+      assertEquals(response.body.get, """{"cookies":[],"body":{"status":"ok"}}""")
+    }
+  }
+
   test("should return 400 on badly formed response from server") { server =>
-    implicit val binding = server.on("GET", "/requestWithBadResponse") { request =>
+    implicit val binding = server.on("POST", "/requestWithBadResponse") { request =>
       val responseBody = """{ "status": "ok with missing double quote }"""
       (Map.empty, responseBody)
     }

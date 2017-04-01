@@ -17,6 +17,7 @@ object HttpCorsProxy {
   case class QueryParam(name: String, value: String)
   case class FormData(name: String, value: String)
   case class Request(url: String,
+                     method: String = "POST",
                      cookie: Option[String] = Option.empty,
                      form: Seq[FormData] = Seq.empty,
                      query: Seq[QueryParam] = Seq.empty)
@@ -41,7 +42,7 @@ object HttpCorsProxy {
     val request = read[Request](JSON.stringify(req.body))
 
     val outBoundRequest = HttpRequest(request.url)
-      .withMethod(Method.POST)
+      .withMethod(Method(request.method))
       .withQueryParameters(request.query.map(q => (q.name, q.value)): _*)
       .withBody(URLEncodedBody(request.form.map(f => (f.name, f.value)): _*))
 

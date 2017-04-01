@@ -14,7 +14,7 @@ class NodeJsTestServer {
 
   def on(method: String, path: String)(r: Request => (Map[String, Seq[String]], String)) = {
     server.onRequest((request: IncomingMessage, response: ServerResponse) => {
-      if (request.url.takeWhile(_ != '?') == path) {
+      if (request.method == method && request.url.takeWhile(_ != '?') == path) {
         var incomingData = Seq.empty[String]
         request
           .onData((data: js.Any) => {
